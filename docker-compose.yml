@@ -1,0 +1,67 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - ${QDRANT__SERVICE__HTTP_PORT}:6333 #для web gui
+      - "6334:6334" #gRPC (gRPC Remote Procedure Calls)
+    volumes:
+      - ./deploy/qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=${QDRANT__SERVICE__HTTP_PORT}
+    networks:
+      - shared_net
+
+  api:
+    build:
+      context: ./deploy
+    user: "${UID}:${GID}"
+    command: >
+      sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./deploy/data:/app/data
+      - ./app:/app
+      - ./deploy/embedding_models:/app/embedding_models
+    environment:
+      - QDRANT_HOST=qdrant
+      #- HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_DOWNLOAD_TIMEOUT=600  # 10 минут
+      - HF_TRANSFER_TIMEOUT=600
+      - HF_REQUEST_TIMEOUT=600
+      - HF_HUB_ETAG_TIMEOUT=600
+      - QDRANT_PORT=6333
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    env_file:
+      - ./.env
+    ports:
+      - 9009:8000
+    networks:
+      - shared_net
+
+  redis:
+    image: redis:6.2.6
+    user: "${UID}:${GID}"
+    volumes:
+      - ./deploy/redis_data:/redis_data
+    networks:
+      - shared_net
+
+  queue:
+    user: "${UID}:${GID}"
+    build:
+      context: ./deploy
+    env_file:
+      - ./.env
+    volumes:
+      - ./app/:/app
+    networks:
+      - shared_net
+    command: python ./manage.py
+
+# создал внешнюю сеть для тестирования в контейнерах
+networks:
+  shared_net:
+    #external: true
+    name: shared_network

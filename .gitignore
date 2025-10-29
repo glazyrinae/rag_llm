@@ -1,0 +1,8 @@
+*.pyc
+.vscode/
+.env
+deploy/qdrant_data
+deploy/redis_data
+deploy/embedding_models
+data
+

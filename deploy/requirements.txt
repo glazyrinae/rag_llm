@@ -1,0 +1,23 @@
+# requirements.txt
+langchain==0.0.346
+qdrant-client==1.6.7
+sentence-transformers==2.2.2
+huggingface-hub==0.16.4
+
+fastapi==0.104.1
+uvicorn==0.24.0
+
+python-dotenv==1.0.0
+openai==0.28.1
+python-multipart==0.0.6
+aiofiles==23.2.1
+pydantic==1.10.12
+#torch==2.2.0
+transformers==4.21.0
+
+redis==5.0.1
+requests==2.27.1
+urllib3==1.26.20
+croniter==6.0.0
+typer==0.15.1
+import_string==0.1.0
