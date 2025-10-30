@@ -1,200 +1,350 @@
----
-language: en
-license: apache-2.0
-library_name: sentence-transformers
-tags:
-- sentence-transformers
-- feature-extraction
-- sentence-similarity
-- transformers
-- text-embeddings-inference
-datasets:
-- s2orc
-- flax-sentence-embeddings/stackexchange_xml
-- ms_marco
-- gooaq
-- yahoo_answers_topics
-- code_search_net
-- search_qa
-- eli5
-- snli
-- multi_nli
-- wikihow
-- natural_questions
-- trivia_qa
-- embedding-data/sentence-compression
-- embedding-data/flickr30k-captions
-- embedding-data/altlex
-- embedding-data/simple-wiki
-- embedding-data/QQP
-- embedding-data/SPECTER
-- embedding-data/PAQ_pairs
-- embedding-data/WikiAnswers
-pipeline_tag: sentence-similarity
+# RAG LLM: Система поиска и анализа кода с помощью Retrieval-Augmented Generation
+
 ---
 
+## Оглавление
 
-# all-mpnet-base-v2
-This is a [sentence-transformers](https://www.SBERT.net) model: It maps sentences & paragraphs to a 768 dimensional dense vector space and can be used for tasks like clustering or semantic search.
+- [Описание](#описание)
+- [Возможности](#возможности)
+- [Архитектура и компоненты](#архитектура-и-компоненты)
+- [Структура проекта](#структура-проекта)
+- [Установка и запуск](#установка-и-запуск)
+  - [Требования](#требования)
+  - [Переменные окружения](#переменные-окружения)
+  - [Запуск через Docker Compose](#запуск-через-docker-compose)
+  - [Локальный запуск (без Docker)](#локальный-запуск-без-docker)
+- [Использование](#использование)
+  - [Индексация кода](#индексация-кода)
+  - [Задание вопросов](#задание-вопросов)
+  - [Асинхронная очередь](#асинхронная-очередь)
+  - [Примеры запросов](#примеры-запросов)
+- [Описание основных файлов и модулей](#описание-основных-файлов-и-модулей)
+- [Расширение и кастомизация](#расширение-и-кастомизация)
+- [Лицензия](#лицензия)
+- [Авторы и благодарности](#авторы-и-благодарности)
+- [FAQ](#faq)
 
-## Usage (Sentence-Transformers)
-Using this model becomes easy when you have [sentence-transformers](https://www.SBERT.net) installed:
+---
+
+## Описание
+
+**RAG LLM** — это система для интеллектуального поиска, анализа и генерации ответов по исходному коду Python-проектов с использованием Retrieval-Augmented Generation (RAG), векторных баз данных и современных языковых моделей (LLM). Проект предназначен для автоматизации технической документации, аудита кода, поддержки разработчиков и ускорения онбординга в проекты.
+
+---
+
+## Возможности
+
+- **Индексация исходного кода:**  
+  Автоматическое сканирование директорий с исходным кодом, разбиение на логические блоки (файлы, классы, функции, docstring-и), извлечение метаданных и сохранение эмбеддингов в векторную базу данных (Qdrant).
+
+- **Семантический поиск:**  
+  Быстрый поиск по коду на основе смыслового сходства, а не только по ключевым словам.
+
+- **Генерация ответов с помощью LLM:**  
+  Ответы на вопросы о коде с использованием современных языковых моделей (например, Mistral через OpenRouter API), с учетом найденных релевантных фрагментов кода.
+
+- **Асинхронная очередь задач:**  
+  Поддержка асинхронной обработки запросов через очередь (Redis), что позволяет масштабировать систему и обрабатывать множество запросов параллельно.
+
+- **REST API:**  
+  Удобный интерфейс для интеграции с другими сервисами и фронтендом.
+
+- **Логирование и мониторинг:**  
+  Подробное логирование всех этапов обработки запросов, возможность отслеживать статус задач.
+
+- **Масштабируемость:**  
+  Возможность развертывания в Docker-контейнерах, поддержка горизонтального масштабирования.
+
+---
+
+## Архитектура и компоненты
 
 ```
-pip install -U sentence-transformers
++-------------------+      +-------------------+      +-------------------+
+|                   |      |                   |      |                   |
+|   FastAPI (API)   +----->+   Redis (Queue)   +----->+   Worker (RAG)    |
+|                   |      |                   |      |                   |
++-------------------+      +-------------------+      +-------------------+
+         |                          |                          |
+         v                          v                          v
++-------------------+      +-------------------+      +-------------------+
+|                   |      |                   |      |                   |
+|  Qdrant (Vectors) |      |  Embedding Model  |      |   LLM (OpenRouter)|
+|                   |      |                   |      |                   |
++-------------------+      +-------------------+      +-------------------+
 ```
 
-Then you can use the model like this:
-```python
-from sentence_transformers import SentenceTransformer
-sentences = ["This is an example sentence", "Each sentence is converted"]
+- **FastAPI** — REST API для взаимодействия с пользователем.
+- **Redis** — брокер очереди для асинхронных задач.
+- **Worker** — обработчик задач очереди, реализующий логику RAG.
+- **Qdrant** — векторная база данных для хранения эмбеддингов кода.
+- **Embedding Model** — модель для преобразования текста кода в векторное представление (по умолчанию `sentence-transformers/all-mpnet-base-v2`).
+- **LLM** — языковая модель для генерации ответов (например, Mistral через OpenRouter).
 
-model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-embeddings = model.encode(sentences)
-print(embeddings)
+---
+
+## Структура проекта
+
+```
+rag_llm/
+├── app/
+│   ├── main.py                # Точка входа FastAPI
+│   ├── manage.py              # Запуск воркера очереди
+│   ├── api/
+│   │   ├── endpoints.py       # REST API endpoints
+│   │   └── ...                # Доп. модули API
+│   ├── lib/
+│   │   ├── rag.py             # Класс Rag: индексация, поиск, генерация
+│   │   ├── queue.py           # Класс QueueManager: очередь задач
+│   │   ├── file_utils.py      # Утилиты для работы с файлами
+│   │   └── ...                # Прочие вспомогательные модули
+│   ├── services/
+│   │   ├── rag_adapter.py     # DI и адаптеры для RAG
+│   │   └── ...                # Прочие сервисы
+│   └── data/                  # (опционально) исходные проекты для индексации
+├── deploy/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── embedding_models/      # Локальные модели эмбеддингов
+├── docker-compose.yml
+├── .env
+└── README.md
 ```
 
-## Usage (HuggingFace Transformers)
-Without [sentence-transformers](https://www.SBERT.net), you can use the model like this: First, you pass your input through the transformer model, then you have to apply the right pooling-operation on-top of the contextualized word embeddings.
+---
 
-```python
-from transformers import AutoTokenizer, AutoModel
-import torch
-import torch.nn.functional as F
+## Установка и запуск
 
-#Mean Pooling - Take attention mask into account for correct averaging
-def mean_pooling(model_output, attention_mask):
-    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+### Требования
 
+- **Docker** и **Docker Compose** (рекомендуется для быстрого старта)
+- Для локального запуска: Python 3.10+, pip, git
+- Доступ к интернету для скачивания моделей и обращения к OpenRouter
 
-# Sentences we want sentence embeddings for
-sentences = ['This is an example sentence', 'Each sentence is converted']
+### Переменные окружения
 
-# Load model from HuggingFace Hub
-tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
-model = AutoModel.from_pretrained('sentence-transformers/all-mpnet-base-v2')
+Создайте файл `.env` в корне проекта. Пример содержимого:
 
-# Tokenize sentences
-encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt')
-
-# Compute token embeddings
-with torch.no_grad():
-    model_output = model(**encoded_input)
-
-# Perform pooling
-sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
-
-# Normalize embeddings
-sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
-
-print("Sentence embeddings:")
-print(sentence_embeddings)
+```
+OPENROUTER_API_KEY=your_openrouter_api_key
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
+REDIS_URL=redis://redis
+EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 ```
 
-## Usage (Text Embeddings Inference (TEI))
+### Запуск через Docker Compose
 
-[Text Embeddings Inference (TEI)](https://github.com/huggingface/text-embeddings-inference) is a blazing fast inference solution for text embedding models.
+1. Клонируйте репозиторий:
 
-- CPU:
-```bash
-docker run -p 8080:80 -v hf_cache:/data --pull always ghcr.io/huggingface/text-embeddings-inference:cpu-latest --model-id sentence-transformers/all-mpnet-base-v2 --pooling mean --dtype float16
+    ```sh
+    git clone <repo_url>
+    cd rag_llm
+    ```
+
+2. Скопируйте пример переменных окружения:
+
+    ```sh
+    cp .env.example .env
+    ```
+
+3. Запустите сервисы:
+
+    ```sh
+    docker-compose up --build
+    ```
+
+    Будут подняты:
+    - Qdrant (векторная БД)
+    - Redis (брокер очереди)
+    - FastAPI (REST API)
+    - Worker (обработчик очереди)
+
+4. API будет доступен по адресу:  
+   http://localhost:5005/docs (Swagger UI)
+
+### Локальный запуск (без Docker)
+
+1. Установите зависимости:
+
+    ```sh
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r deploy/requirements.txt
+    ```
+
+2. Запустите Qdrant и Redis (например, через Docker):
+
+    ```sh
+    docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+    docker run -p 6379:6379 redis
+    ```
+
+3. Запустите FastAPI:
+
+    ```sh
+    uvicorn app.main:app --host 0.0.0.0 --port 5005
+    ```
+
+4. Запустите воркер очереди:
+
+    ```sh
+    python app/manage.py
+    ```
+
+---
+
+## Использование
+
+### Индексация кода
+
+Для индексации локального проекта (например, в `/app/data/your_project`):
+
+```sh
+curl -X POST "http://localhost:5005/api/index-local-project" \
+     -H "accept: application/json" \
+     -d "project_path=/app/data/your_project"
 ```
 
-- NVIDIA GPU:
-```bash
-docker run --gpus all -p 8080:80 -v hf_cache:/data --pull always ghcr.io/huggingface/text-embeddings-inference:cuda-latest --model-id sentence-transformers/all-mpnet-base-v2 --pooling mean --dtype float16
+- **project_path** — путь к директории с исходным кодом внутри контейнера.
+
+После индексации все функции, классы и файлы будут разбиты на фрагменты, преобразованы в эмбеддинги и сохранены в Qdrant.
+
+### Задание вопросов
+
+**Синхронный режим (без очереди):**
+
+```sh
+curl -X POST "http://localhost:5005/api/ask_test" \
+     -H "accept: application/json" \
+     -d "question=Что делает функция X?"
 ```
 
-Send a request to `/v1/embeddings` to generate embeddings via the [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings/create):
-```bash
-curl http://localhost:8080/v1/embeddings \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "sentence-transformers/all-mpnet-base-v2",
-    "input": ["This is an example sentence", "Each sentence is converted"]
-  }'
+**Асинхронный режим (через очередь):**
+
+```sh
+curl -X POST "http://localhost:5005/api/ask" \
+     -H "accept: application/json" \
+     -d "question=Как работает класс Y?"
 ```
 
-Or check the [Text Embeddings Inference API specification](https://huggingface.github.io/text-embeddings-inference/) instead.
+- В асинхронном режиме вы получите идентификатор задачи (`task_id`), по которому можно проверить статус и получить результат.
 
-------
+### Асинхронная очередь
 
-## Background
+Проверить статус задачи:
 
-The project aims to train sentence embedding models on very large sentence level datasets using a self-supervised 
-contrastive learning objective. We used the pretrained [`microsoft/mpnet-base`](https://huggingface.co/microsoft/mpnet-base) model and fine-tuned in on a 
-1B sentence pairs dataset. We use a contrastive learning objective: given a sentence from the pair, the model should predict which out of a set of randomly sampled other sentences, was actually paired with it in our dataset.
+```sh
+curl "http://localhost:5005/api/task-status?task_id=<task_id>"
+```
 
-We developed this model during the 
-[Community week using JAX/Flax for NLP & CV](https://discuss.huggingface.co/t/open-to-the-community-community-week-using-jax-flax-for-nlp-cv/7104), 
-organized by Hugging Face. We developed this model as part of the project:
-[Train the Best Sentence Embedding Model Ever with 1B Training Pairs](https://discuss.huggingface.co/t/train-the-best-sentence-embedding-model-ever-with-1b-training-pairs/7354). We benefited from efficient hardware infrastructure to run the project: 7 TPUs v3-8, as well as intervention from Googles Flax, JAX, and Cloud team member about efficient deep learning frameworks.
+Получить результат:
 
-## Intended uses
+```sh
+curl "http://localhost:5005/api/task-result?task_id=<task_id>"
+```
 
-Our model is intented to be used as a sentence and short paragraph encoder. Given an input text, it outputs a vector which captures 
-the semantic information. The sentence vector may be used for information retrieval, clustering or sentence similarity tasks.
+### Примеры запросов
 
-By default, input text longer than 384 word pieces is truncated.
+#### Проверка статуса API
 
+```sh
+curl http://localhost:5005/api/health
+```
 
-## Training procedure
+#### Индексация кода
 
-### Pre-training 
+```sh
+curl -X POST "http://localhost:5005/api/index-local-project" \
+     -d "project_path=/app/data/your_project"
+```
 
-We use the pretrained [`microsoft/mpnet-base`](https://huggingface.co/microsoft/mpnet-base) model. Please refer to the model card for more detailed information about the pre-training procedure.
+#### Вопрос по коду
 
-### Fine-tuning 
+```sh
+curl -X POST "http://localhost:5005/api/ask_test" \
+     -d "question=Как работает функция foo?"
+```
 
-We fine-tune the model using a contrastive objective. Formally, we compute the cosine similarity from each possible sentence pairs from the batch.
-We then apply the cross entropy loss by comparing with true pairs.
+#### Асинхронный вопрос
 
-#### Hyper parameters
+```sh
+curl -X POST "http://localhost:5005/api/ask" \
+     -d "question=Опиши архитектуру проекта"
+```
 
-We trained our model on a TPU v3-8. We train the model during 100k steps using a batch size of 1024 (128 per TPU core).
-We use a learning rate warm up of 500. The sequence length was limited to 128 tokens. We used the AdamW optimizer with
-a 2e-5 learning rate. The full training script is accessible in this current repository: `train_script.py`.
+---
 
-#### Training data
+## Описание основных файлов и модулей
 
-We use the concatenation from multiple datasets to fine-tune our model. The total number of sentence pairs is above 1 billion sentences.
-We sampled each dataset given a weighted probability which configuration is detailed in the `data_config.json` file.
+- **app/main.py** — точка входа FastAPI, определяет маршруты и инициализацию приложения.
+- **app/manage.py** — запуск воркера очереди, обработка асинхронных задач.
+- **app/api/endpoints.py** — основные REST endpoints: индексация, вопросы, статус задач.
+- **app/lib/rag.py** — класс `Rag`, реализующий:
+  - Индексацию кода (сканирование, разбиение, эмбеддинг, сохранение в Qdrant)
+  - Поиск релевантных фрагментов по запросу
+  - Формирование prompt-а для LLM
+  - Вызов LLM и генерацию ответа
+- **app/lib/queue.py** — класс `QueueManager`, реализующий:
+  - Постановку задач в очередь Redis
+  - Получение статуса и результата задач
+- **app/services/rag_adapter.py** — адаптер для вызова RAG из очереди.
+- **deploy/Dockerfile** — сборка образа приложения.
+- **deploy/requirements.txt** — зависимости Python.
+- **docker-compose.yml** — описание сервисов для запуска всей системы.
 
+---
 
-| Dataset                                                  | Paper                                    | Number of training tuples  |
-|--------------------------------------------------------|:----------------------------------------:|:--------------------------:|
-| [Reddit comments (2015-2018)](https://github.com/PolyAI-LDN/conversational-datasets/tree/master/reddit) | [paper](https://arxiv.org/abs/1904.06472) | 726,484,430 |
-| [S2ORC](https://github.com/allenai/s2orc) Citation pairs (Abstracts) | [paper](https://aclanthology.org/2020.acl-main.447/) | 116,288,806 |
-| [WikiAnswers](https://github.com/afader/oqa#wikianswers-corpus) Duplicate question pairs | [paper](https://doi.org/10.1145/2623330.2623677) | 77,427,422 |
-| [PAQ](https://github.com/facebookresearch/PAQ) (Question, Answer) pairs | [paper](https://arxiv.org/abs/2102.07033) | 64,371,441 |
-| [S2ORC](https://github.com/allenai/s2orc) Citation pairs (Titles) | [paper](https://aclanthology.org/2020.acl-main.447/) | 52,603,982 |
-| [S2ORC](https://github.com/allenai/s2orc) (Title, Abstract) | [paper](https://aclanthology.org/2020.acl-main.447/) | 41,769,185 |
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) (Title, Body) pairs  | - | 25,316,456 |
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) (Title+Body, Answer) pairs  | - | 21,396,559 |
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) (Title, Answer) pairs  | - | 21,396,559 |
-| [MS MARCO](https://microsoft.github.io/msmarco/) triplets | [paper](https://doi.org/10.1145/3404835.3462804) | 9,144,553 |
-| [GOOAQ: Open Question Answering with Diverse Answer Types](https://github.com/allenai/gooaq) | [paper](https://arxiv.org/pdf/2104.08727.pdf) | 3,012,496 |
-| [Yahoo Answers](https://www.kaggle.com/soumikrakshit/yahoo-answers-dataset) (Title, Answer) | [paper](https://proceedings.neurips.cc/paper/2015/hash/250cf8b51c773f3f8dc8b4be867a9a02-Abstract.html) | 1,198,260 |
-| [Code Search](https://huggingface.co/datasets/code_search_net) | - | 1,151,414 |
-| [COCO](https://cocodataset.org/#home) Image captions | [paper](https://link.springer.com/chapter/10.1007%2F978-3-319-10602-1_48) | 828,395|
-| [SPECTER](https://github.com/allenai/specter) citation triplets | [paper](https://doi.org/10.18653/v1/2020.acl-main.207) | 684,100 |
-| [Yahoo Answers](https://www.kaggle.com/soumikrakshit/yahoo-answers-dataset) (Question, Answer) | [paper](https://proceedings.neurips.cc/paper/2015/hash/250cf8b51c773f3f8dc8b4be867a9a02-Abstract.html) | 681,164 |
-| [Yahoo Answers](https://www.kaggle.com/soumikrakshit/yahoo-answers-dataset) (Title, Question) | [paper](https://proceedings.neurips.cc/paper/2015/hash/250cf8b51c773f3f8dc8b4be867a9a02-Abstract.html) | 659,896 |
-| [SearchQA](https://huggingface.co/datasets/search_qa) | [paper](https://arxiv.org/abs/1704.05179) | 582,261 |
-| [Eli5](https://huggingface.co/datasets/eli5) | [paper](https://doi.org/10.18653/v1/p19-1346) | 325,475 |
-| [Flickr 30k](https://shannon.cs.illinois.edu/DenotationGraph/) | [paper](https://transacl.org/ojs/index.php/tacl/article/view/229/33) | 317,695 |
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) Duplicate questions (titles) | | 304,525 |
-| AllNLI ([SNLI](https://nlp.stanford.edu/projects/snli/) and [MultiNLI](https://cims.nyu.edu/~sbowman/multinli/) | [paper SNLI](https://doi.org/10.18653/v1/d15-1075), [paper MultiNLI](https://doi.org/10.18653/v1/n18-1101) | 277,230 | 
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) Duplicate questions (bodies) | | 250,519 |
-| [Stack Exchange](https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_xml) Duplicate questions (titles+bodies) | | 250,460 |
-| [Sentence Compression](https://github.com/google-research-datasets/sentence-compression) | [paper](https://www.aclweb.org/anthology/D13-1155/) | 180,000 |
-| [Wikihow](https://github.com/pvl/wikihow_pairs_dataset) | [paper](https://arxiv.org/abs/1810.09305) | 128,542 |
-| [Altlex](https://github.com/chridey/altlex/) | [paper](https://aclanthology.org/P16-1135.pdf) | 112,696 |
-| [Quora Question Triplets](https://quoradata.quora.com/First-Quora-Dataset-Release-Question-Pairs) | - | 103,663 |
-| [Simple Wikipedia](https://cs.pomona.edu/~dkauchak/simplification/) | [paper](https://www.aclweb.org/anthology/P11-2117/) | 102,225 |
-| [Natural Questions (NQ)](https://ai.google.com/research/NaturalQuestions) | [paper](https://transacl.org/ojs/index.php/tacl/article/view/1455) | 100,231 |
-| [SQuAD2.0](https://rajpurkar.github.io/SQuAD-explorer/) | [paper](https://aclanthology.org/P18-2124.pdf) | 87,599 |
-| [TriviaQA](https://huggingface.co/datasets/trivia_qa) | - | 73,346 |
-| **Total** | | **1,170,060,424** |
+## Расширение и кастомизация
+
+- **Добавление новых языков программирования:**  
+  Реализуйте парсеры для других языков (например, Java, JS) и добавьте их в модуль индексации.
+
+- **Замена модели эмбеддингов:**  
+  Измените переменную окружения `EMBEDDING_MODEL` и скачайте нужную модель в `deploy/embedding_models`.
+
+- **Использование других LLM:**  
+  Поддерживаются любые LLM, доступные через OpenRouter или напрямую через API.
+
+- **Интеграция с фронтендом:**  
+  Используйте REST API для создания пользовательских интерфейсов (например, чат-бота для документации).
+
+- **Масштабирование:**  
+  Запускайте несколько воркеров очереди для обработки большого количества запросов.
+
+---
+
+## Лицензия
+
+Проект распространяется под лицензией Apache-2.0.
+
+---
+
+## Авторы и благодарности
+
+- Используются модели [sentence-transformers/all-mpnet-base-v2](https://www.sbert.net/), инфраструктура [Qdrant](https://qdrant.tech/), [Redis](https://redis.io/).
+- Благодарности HuggingFace, OpenRouter, LangChain и сообществу Python.
+- Автор: [Ваше имя или команда]
+
+---
+
+## FAQ
+
+**Q:** Как добавить новый проект для индексации?  
+**A:** Поместите проект в папку `app/data/` (или другую, указанную в `project_path`) и вызовите endpoint `/api/index-local-project`.
+
+**Q:** Как ускорить индексацию?  
+**A:** Используйте локальные модели эмбеддингов, увеличьте количество воркеров очереди.
+
+**Q:** Как изменить модель LLM?  
+**A:** Измените настройки в `.env` и перезапустите сервисы.
+
+**Q:** Как получить подробный лог?  
+**A:** Логи пишутся в stdout контейнеров, используйте `docker-compose logs` для просмотра.
+
+**Q:** Как интегрировать с CI/CD?  
+**A:** Используйте REST API для автоматической индексации и анализа кода при каждом коммите.
+
+---
+
+**Если у вас есть вопросы или предложения — создайте issue или pull request!**

@@ -67,7 +67,7 @@ async def health_check(rag: Rag = Depends(get_rag_system)):
     }
 
 @router.post("/index-local-project")
-async def index_local_project(rag: Rag = Depends(get_rag_system), project_path: str = "/app/data/project"):
+async def index_local_project(rag: Rag = Depends(get_rag_system), project_path: str = "/app/data"):
     """Индексация локального проекта (уже в контейнере)"""
     try:
         if not os.path.exists(project_path):

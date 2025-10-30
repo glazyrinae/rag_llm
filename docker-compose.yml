@@ -33,7 +33,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - 9009:8000
+      - 5005:8000
     networks:
       - shared_net
 
@@ -41,7 +41,7 @@ services:
     image: redis:6.2.6
     user: "${UID}:${GID}"
     volumes:
-      - ./deploy/redis_data:/redis_data
+      - ./deploy/redis_data:/data
     networks:
       - shared_net
 
