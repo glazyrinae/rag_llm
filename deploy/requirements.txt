@@ -21,3 +21,7 @@ urllib3==1.26.20
 croniter==6.0.0
 typer==0.15.1
 import_string==0.1.0
+
+PyPDF2>=3.0.0
+markdown>=3.4.0
+beautifulsoup4>=4.12.0

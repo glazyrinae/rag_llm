@@ -1,6 +1,5 @@
 # app/rag_system.py
 import os
-import ast
 from typing import List, Dict, Any
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -10,6 +9,7 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from qdrant_client import QdrantClient
+from lib.file_processor import FileProcessorFacade
 
 
 class Rag:
@@ -73,8 +73,11 @@ class Rag:
             max_tokens=1000,
         )
 
-    def scan_python_project(self, project_path: str) -> List[Document]:
-        """Сканирование Python проекта и извлечение кода"""
+    def scan_dataset(self, project_path: str, file_extensions: List[str] = None) -> List[Document]:
+        """Сканирование проекта с поддержкой разных типов файлов"""
+        if file_extensions is None:
+            file_extensions = ['.py', '.md', '.txt', '.pdf', '.html']
+        
         documents = []
 
         for root, dirs, files in os.walk(project_path):
@@ -86,72 +89,16 @@ class Rag:
             ]
 
             for file in files:
-                if file.endswith(".py"):
+                file_ext = os.path.splitext(file)[1].lower()
+                if file_ext in file_extensions:
                     file_path = os.path.join(root, file)
-                    file_docs = self._parse_python_file(file_path)
-                    documents.extend(file_docs)
-                    print(f"✅ Обработан: {file_path} ({len(file_docs)} документов)")
-
-        return documents
-
-    def _parse_python_file(self, file_path: str) -> List[Document]:
-        """Парсинг одного Python файла"""
-        documents = []
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Базовый документ с полным кодом
-            relative_path = os.path.relpath(file_path)
-            full_doc = Document(
-                page_content=f"Файл: {relative_path}\n\n{content}",
-                metadata={
-                    "file_path": relative_path,
-                    "type": "full_file",
-                    "language": "python",
-                },
-            )
-            documents.append(full_doc)
-
-            # Анализ AST для извлечения структуры
-            try:
-                tree = ast.parse(content)
-
-                # Извлекаем классы
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef):
-                        class_code = ast.get_source_segment(content, node)
-                        class_doc = Document(
-                            page_content=f"Класс {node.name} в файле {relative_path}:\n\n{class_code}",
-                            metadata={
-                                "file_path": relative_path,
-                                "type": "class",
-                                "name": node.name,
-                                "language": "python",
-                            },
-                        )
-                        documents.append(class_doc)
-
-                    # Извлекаем функции
-                    elif isinstance(node, ast.FunctionDef):
-                        func_code = ast.get_source_segment(content, node)
-                        func_doc = Document(
-                            page_content=f"Функция {node.name} в файле {relative_path}:\n\n{func_code}",
-                            metadata={
-                                "file_path": relative_path,
-                                "type": "function",
-                                "name": node.name,
-                                "language": "python",
-                            },
-                        )
-                        documents.append(func_doc)
-
-            except SyntaxError as e:
-                print(f"⚠️ Ошибка AST в {file_path}: {e}")
-
-        except Exception as e:
-            print(f"❌ Ошибка чтения {file_path}: {e}")
+                    try:
+                        # Фасад автоматически выберет нужный парсер
+                        file_docs = FileProcessorFacade.parse_file(file_path, Document)
+                        documents.extend(file_docs)
+                        print(f"✅ Обработан: {file_path} ({len(file_docs)} документов)")
+                    except Exception as e:
+                        print(f"❌ Ошибка обработки {file_path}: {e}")
 
         return documents
 
