@@ -73,7 +73,7 @@ async def index_local_project(rag: Rag = Depends(get_rag_system), project_path: 
         if not os.path.exists(project_path):
             raise HTTPException(status_code=404, detail="Директория проекта не найдена")
 
-        documents = rag.scan_python_project(project_path)
+        documents = rag.scan_dataset(project_path)
 
         if not documents:
             raise HTTPException(status_code=400, detail="Не найдено Python файлов")
