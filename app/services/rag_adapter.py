@@ -15,9 +15,9 @@ def get_rag_instance() -> Rag:
         _rag_instance = get_rag_system()
     return _rag_instance
 
-async def rag_ask_about_code(**kwargs) -> dict:
+async def rag_ask_llm(**kwargs) -> dict:
     """
-    Обертка для вызова метода ask_about_code класса Rag
+    Обертка для вызова метода ask_llm класса Rag
     """
     try:
         question = kwargs.get('question', '')
@@ -29,7 +29,7 @@ async def rag_ask_about_code(**kwargs) -> dict:
         
         # Получаем экземпляр RAG и вызываем метод
         rag = get_rag_instance()
-        result = rag.ask_about_code(question)
+        result = rag.ask_llm(question)
         
         # Форматируем результат
         formatted_result = {
@@ -41,7 +41,9 @@ async def rag_ask_about_code(**kwargs) -> dict:
                     "name": doc.metadata.get("name", "")
                 }
                 for doc in result.get("source_documents", [])
-            ]
+            ],
+            "conversation_history": result["conversation_history"],
+            #"history_used": result["history_used"],
         }
         
         logger.info(f"RAG question processed successfully: {question}")

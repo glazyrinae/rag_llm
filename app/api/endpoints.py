@@ -26,18 +26,8 @@ async def ask_question(
         if not question.strip():
             raise HTTPException(status_code=400, detail="Question cannot be empty")
         
-        result = rag.ask_about_code(question)
-        return {
-            "answer": result["result"],
-            "sources": [
-                {
-                    "file": doc.metadata.get("file_path", ""),
-                    "type": doc.metadata.get("type", ""),
-                    "name": doc.metadata.get("name", "")
-                }
-                for doc in result.get("source_documents", [])
-            ]
-        }
+        result = rag.ask_llm(question)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
 
@@ -48,7 +38,7 @@ async def ask_question_async(question: str):
             raise HTTPException(status_code=400, detail="Question cannot be empty")
         
         task_id = queue.add(
-            function_path="services.rag_adapter.rag_ask_about_code",
+            function_path="services.rag_adapter.rag_ask_llm",
             kwargs={"question": question},
             queue="rag_questions",
             save_result_sec=3600,
