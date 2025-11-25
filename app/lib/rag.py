@@ -11,6 +11,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from qdrant_client import QdrantClient
+from qdrant_client.http import models  # Добавляем импорт
 from lib.file_processor import FileProcessorFacade
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,12 @@ class Rag:
             model_kwargs={"device": "cpu"},
         )
 
+        self._ensure_collection_exists("knowledge base")
+
         # Векторная БД
         self.vector_store = Qdrant(
             client=self.qdrant_client,
-            collection_name="python_code",
+            collection_name="knowledge base", #"python_code",
             embeddings=self.embeddings
         )
 
@@ -54,6 +57,24 @@ class Rag:
         self.llm = None
         self.qa_chain = None
         self.memory = None
+
+    def _ensure_collection_exists(self, collection_name: str):
+        """Проверяет существование коллекции и создает если нужно"""
+        try:
+            # Пытаемся получить информацию о коллекции
+            self.qdrant_client.get_collection(collection_name)
+            logger.info(f"✅ Коллекция '{collection_name}' уже существует")
+        except Exception:
+            # Если коллекции нет - создаем
+            logger.info(f"🆕 Создаем коллекцию '{collection_name}'")
+            self.qdrant_client.create_collection(
+                collection_name=collection_name,
+                vectors_config=models.VectorParams(
+                    size=768,  # Размерность для all-mpnet-base-v2
+                    distance=models.Distance.COSINE
+                )
+            )
+            logger.info(f"✅ Коллекция '{collection_name}' создана")
 
     def init_llm(self, api_key: str, model: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct"):
         """Инициализация ConversationRetrievalChain"""
@@ -128,7 +149,7 @@ class Rag:
         logger.info("✅ ConversationRetrievalChain инициализирована с поддержкой истории")
 
     def ask_llm(self, question: str) -> Dict[str, Any]:
-        """Основной метод для вопросов с автоматической историей"""
+        """Основной метод для вопросов с историей"""
         if not self.qa_chain:
             raise ValueError("Сначала вызовите init_llm()")
             
@@ -187,6 +208,7 @@ class Rag:
     def scan_dataset(self, project_path: str, file_extensions: List[str] = None) -> List[Document]:
         """Сканирование проекта с поддержкой разных типов файлов"""
         if file_extensions is None:
+            # todo добавить другие типы файлов по необходимости - картинки по-любому
             file_extensions = ['.py', '.md', '.txt', '.pdf', '.html']
         
         documents = []
