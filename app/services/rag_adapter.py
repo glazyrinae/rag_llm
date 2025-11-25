@@ -22,6 +22,7 @@ async def rag_ask_llm(**kwargs) -> dict:
     try:
         question = kwargs.get('question', '')
         url_response = kwargs.get('url_response', '')
+        chat_id = kwargs.get('chat_id', '')
         if not question:
             raise ValueError("Question is required")
         
@@ -48,7 +49,15 @@ async def rag_ask_llm(**kwargs) -> dict:
         
         logger.info(f"RAG question processed successfully: {question}")
         if url_response:
-            res = requests.get(url_response, params={"result": formatted_result})
+            # res = requests.get(url_response, params={"result": formatted_result})
+            # telegram_url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,          # ← это и есть ID пользователя
+                "text": formatted_result,
+                "parse_mode": "HTML"         # опционально
+            }
+            response = requests.post(url_response, json=payload)
+            res = response.json()
             if res:
                 logger.info(f"RAG response: {res.text}")
             return res.text if res else {}

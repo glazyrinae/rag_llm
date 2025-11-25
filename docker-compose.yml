@@ -14,7 +14,7 @@ services:
   # поддержка контекста
   # можно ли разделять поиск например только искать по коду или по тексту
   # можно ли сделать треды для кода для общих вопросов типа чата id
-  # использовать другую модель Степину может отдавать более кач ответ (про сервак) qwen2.5-coder:7b !qwen3-coder:30b!
+  # использовать другую модель может отдавать более кач ответ (про сервак) qwen2.5-coder:7b !qwen3-coder:30b!
   api:
     build:
       context: ./deploy
@@ -70,6 +70,19 @@ services:
     networks:
       - shared_net
     command: python ./manage.py
+
+  telegram-bot:
+    build: ./bot/deploy
+    container_name: telegram-bot
+    restart: unless-stopped
+    volumes:
+      - ./bot/:/app
+    depends_on:
+      - api
+    env_file:
+      - ./bot/.env
+    networks:
+      - shared_net
 
 # создал внешнюю сеть для тестирования в контейнерах
 networks:

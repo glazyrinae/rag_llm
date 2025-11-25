@@ -32,14 +32,14 @@ async def ask_question(
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
 
 @router.post("/ask")
-async def ask_question_async(question: str):
+async def ask_question_async(question: str, url_response: str, chat_id: str):
     try:
         if not question.strip():
             raise HTTPException(status_code=400, detail="Question cannot be empty")
         
         task_id = queue.add(
             function_path="services.rag_adapter.rag_ask_llm",
-            kwargs={"question": question},
+            kwargs={"question": question, "url_response": url_response, chat_id: str},
             queue="rag_questions",
             save_result_sec=3600,
         )

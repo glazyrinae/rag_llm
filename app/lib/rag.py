@@ -40,7 +40,7 @@ class Rag:
         self.vector_store = Qdrant(
             client=self.qdrant_client,
             collection_name="python_code",
-            embeddings=self.embeddings,
+            embeddings=self.embeddings
         )
 
         # Сплиттер для кода
@@ -106,7 +106,7 @@ class Rag:
 - Ответ должен быть основан на информации, но не содержать прямых цитат
 
 ОТВЕТ:""",
-            input_variables=["context", "question", "chat_history"]  # ⭐ ДОБАВЛЕН chat_history
+            input_variables=["context", "question", "chat_history"]
         )
         
         # Создание цепочки с диалогом
@@ -133,7 +133,6 @@ class Rag:
             raise ValueError("Сначала вызовите init_llm()")
             
         try:
-            # ⭐ ВСЯ МАГИЯ ЗДЕСЬ - автоматическое использование истории!
             result = self.qa_chain({"question": question})
             
             # Форматируем source_documents
@@ -179,7 +178,7 @@ class Rag:
         return formatted
 
     def clear_conversation_history(self):
-        """Очистить историю диалога"""
+        """Очистить историю диалога Пока добавил опционально"""
         if self.memory:
             self.memory.clear()
             logger.info("История диалога очищена")
