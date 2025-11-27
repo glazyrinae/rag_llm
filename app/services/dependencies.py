@@ -12,7 +12,18 @@ def get_rag_system() -> Rag:
     
     # Инициализируем LLM если нужно
     api_key = os.getenv("OPENROUTER_API_KEY")
+    type_model = os.getenv("TYPE_MODEL")
     if api_key:
-        rag.init_llm(api_key=api_key)
+        if type_model == "cloud":
+            rag.init_llm(
+                llm_type='cloud',
+                api_key=api_key
+            )
+        else:
+            rag.init_llm(
+                model='tinyllama:1.1b',
+                llm_type='local',
+                api_key=api_key
+            )
     
     return rag

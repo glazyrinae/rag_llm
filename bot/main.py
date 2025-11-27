@@ -18,13 +18,12 @@ async def call_api(chat_id: str, user_message: str) -> str:
         # Отправляем POST запрос к API
         async with aiohttp.ClientSession() as session:
             data = user_message
-            url_response = 'https://api.telegram.org/bot{BOT_TOKEN}/getUpdates'
+            url_response = f'https://api.telegram.org/bot{BOT_TOKEN}/getUpdates'
             async with session.post(
-                f"http://api:8000/api/ask?url_response={url_response}&question={user_message}&chat_id={chat_id}",
+                f"http://api:8000/api/ask?question={user_message}&chat_id={chat_id}",
                 json=data,
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
-                
                 if response.status == 200:
                     result = await response.json()
                     return result.get("result", "Ответ от API пустой")
@@ -53,7 +52,7 @@ async def handle_all_messages(message: Message):
     api_response = await call_api(message.chat.id, message.text)
     
     # Отправляем ответ пользователю
-    await message.answer(f"📨 Ваше сообщение: {message.text}\n\n🔔 Ответ от API: {api_response}")
+    await message.answer(f"📨 {api_response}")
 
 async def main():
     print("Бот запущен!")

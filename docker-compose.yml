@@ -1,4 +1,37 @@
 services:
+  #docker exec ollama ollama pull tinyllama:1.1b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./deploy/ollama_models:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - shared_net
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_API_BASE_URL=http://ollama:11434/api
+      - HF_ENDPOINT=https://hf-mirror.com
+      - OLLAMA_REQUEST_TIMEOUT=300
+      - DOWNLOAD_TIMEOUT=600
+      - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+    volumes:
+      - ./deploy/open-webui-data:/app/backend/data
+      - ./deploy/ollama_models:/root/.ollama  # общая папка с моделями
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - shared_net
+
   qdrant:
     image: qdrant/qdrant:latest
     ports:

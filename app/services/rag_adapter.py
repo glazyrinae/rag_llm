@@ -1,5 +1,5 @@
 # app/queue_tasks.py
-import logging, requests
+import logging, requests, os
 from lib.rag import Rag
 from services.dependencies import get_rag_system
 
@@ -21,7 +21,7 @@ async def rag_ask_llm(**kwargs) -> dict:
     """
     try:
         question = kwargs.get('question', '')
-        url_response = kwargs.get('url_response', '')
+        url_response = 1
         chat_id = kwargs.get('chat_id', '')
         if not question:
             raise ValueError("Question is required")
@@ -30,20 +30,20 @@ async def rag_ask_llm(**kwargs) -> dict:
         
         # Получаем экземпляр RAG и вызываем метод
         rag = get_rag_instance()
-        result = rag.ask_llm(question)
-        
+        response = rag.ask_llm(question)
+        logger.info(f"RAG Result: {response}")
         # Форматируем результат
         formatted_result = {
-            "answer": result["result"],
+            "answer": response["result"],
             "sources": [
                 {
-                    "file": doc.metadata.get("file_path", ""),
-                    "type": doc.metadata.get("type", ""),
-                    "name": doc.metadata.get("name", "")
+                    "file": doc.get("metadata", {}).get("file_path", "") if isinstance(doc, dict) else "",
+                    "type": doc.get("metadata", {}).get("type", "") if isinstance(doc, dict) else "",
+                    "name": doc.get("metadata", {}).get("name", "") if isinstance(doc, dict) else ""
                 }
-                for doc in result.get("source_documents", [])
+                for doc in response.get("source_documents", [])
             ],
-            "conversation_history": result["conversation_history"],
+            "conversation_history": response["conversation_history"],
             #"history_used": result["history_used"],
         }
         
@@ -53,14 +53,17 @@ async def rag_ask_llm(**kwargs) -> dict:
             # telegram_url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendMessage"
             payload = {
                 "chat_id": chat_id,          # ← это и есть ID пользователя
-                "text": formatted_result,
+                "text": response.get('result', ''),
                 "parse_mode": "HTML"         # опционально
             }
-            response = requests.post(url_response, json=payload)
+            
+            BOT_TOKEN = os.getenv("BOT_TOKEN")
+            response = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
+            
             res = response.json()
             if res:
-                logger.info(f"RAG response: {res.text}")
-            return res.text if res else {}
+                logger.info(f"Отправил ответ в телеграм: {res} c {payload} на {url_response}")
+            #return res.get('result', '') if res else {}
         return formatted_result
         
     except Exception as e:
